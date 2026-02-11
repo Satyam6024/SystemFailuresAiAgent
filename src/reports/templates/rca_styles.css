@@ -1,0 +1,98 @@
+/* RCA Report PDF Styles — xhtml2pdf compatible */
+
+body {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
+    color: #333;
+}
+
+h1 {
+    font-size: 22pt;
+    color: #1a1a2e;
+    border-bottom: 3px solid #e74c3c;
+    padding-bottom: 8px;
+    margin-top: 0;
+}
+
+h2 {
+    font-size: 15pt;
+    color: #16213e;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 4px;
+    margin-top: 24px;
+}
+
+h3 {
+    font-size: 12pt;
+    color: #0f3460;
+    margin-top: 16px;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 16px 0;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 10pt;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+th {
+    background-color: #f7f7f7;
+    font-weight: bold;
+    color: #333;
+}
+
+code {
+    background-color: #f4f4f4;
+    padding: 2px 6px;
+    font-family: Courier, monospace;
+    font-size: 10pt;
+    color: #e74c3c;
+}
+
+pre {
+    background-color: #f8f8f8;
+    border: 1px solid #ddd;
+    padding: 12px;
+    font-size: 9pt;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+ul, ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+li {
+    margin: 4px 0;
+}
+
+strong {
+    color: #1a1a2e;
+}
+
+blockquote {
+    border-left: 4px solid #e74c3c;
+    margin: 12px 0;
+    padding: 8px 16px;
+    background-color: #fff5f5;
+    color: #555;
+}
+
+em {
+    color: #666;
+    font-size: 10pt;
+}

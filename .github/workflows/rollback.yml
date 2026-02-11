@@ -1,0 +1,78 @@
+name: Service Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Name of the service to roll back"
+        required: true
+        type: string
+      target_version:
+        description: "Target version to roll back to"
+        required: false
+        default: "previous"
+        type: string
+      triggered_by:
+        description: "Who or what triggered this rollback"
+        required: false
+        default: "manual"
+        type: string
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log rollback details
+        run: |
+          echo "=========================================="
+          echo "  SERVICE ROLLBACK INITIATED"
+          echo "=========================================="
+          echo ""
+          echo "  Service:        ${{ inputs.service }}"
+          echo "  Target Version: ${{ inputs.target_version }}"
+          echo "  Triggered By:   ${{ inputs.triggered_by }}"
+          echo "  Timestamp:      $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "  Run ID:         ${{ github.run_id }}"
+          echo ""
+          echo "=========================================="
+
+      - name: Simulate rollback
+        run: |
+          echo "Starting rollback of ${{ inputs.service }}..."
+          echo ""
+          echo "Step 1/4: Pulling previous container image..."
+          sleep 2
+          echo "  -> Image pulled: ${{ inputs.service }}:${{ inputs.target_version }}"
+          echo ""
+          echo "Step 2/4: Draining active connections..."
+          sleep 2
+          echo "  -> Connections drained successfully"
+          echo ""
+          echo "Step 3/4: Deploying previous version..."
+          sleep 2
+          echo "  -> Deployment complete"
+          echo ""
+          echo "Step 4/4: Running health checks..."
+          sleep 2
+          echo "  -> Health check passed"
+          echo ""
+          echo "=========================================="
+          echo "  ROLLBACK COMPLETE"
+          echo "  Service: ${{ inputs.service }}"
+          echo "  Version: ${{ inputs.target_version }}"
+          echo "=========================================="
+
+      - name: Create rollback summary
+        run: |
+          echo "## Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Service** | ${{ inputs.service }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Version** | ${{ inputs.target_version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered By** | ${{ inputs.triggered_by }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Completed |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Timestamp** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,139 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: sfa-prod
+
+jobs:
+  # ── Test ────────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run linter
+        run: uv run ruff check src/ tests/
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
+
+  # ── Build & Push Docker Images ─────────────────────────────────
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/api.Dockerfile -t $ECR_REGISTRY/${{ env.STACK_NAME }}-api:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/${{ env.STACK_NAME }}-api:$IMAGE_TAG $ECR_REGISTRY/${{ env.STACK_NAME }}-api:latest
+          docker push $ECR_REGISTRY/${{ env.STACK_NAME }}-api:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ env.STACK_NAME }}-api:latest
+
+      - name: Build and push UI image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/ui.Dockerfile -t $ECR_REGISTRY/${{ env.STACK_NAME }}-ui:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/${{ env.STACK_NAME }}-ui:$IMAGE_TAG $ECR_REGISTRY/${{ env.STACK_NAME }}-ui:latest
+          docker push $ECR_REGISTRY/${{ env.STACK_NAME }}-ui:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ env.STACK_NAME }}-ui:latest
+
+  # ── Deploy to ECS ──────────────────────────────────────────────
+  deploy:
+    name: Deploy to ECS Fargate
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/aws/cloudformation.yml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              EnvironmentName=${{ env.STACK_NAME }} \
+              ApiImageTag=${{ github.sha }} \
+              UiImageTag=${{ github.sha }} \
+            --no-fail-on-empty-changeset
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.STACK_NAME }}-cluster \
+            --service ${{ env.STACK_NAME }}-api \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} \
+            --no-cli-pager
+
+          aws ecs update-service \
+            --cluster ${{ env.STACK_NAME }}-cluster \
+            --service ${{ env.STACK_NAME }}-ui \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} \
+            --no-cli-pager
+
+      - name: Get deployment URL
+        run: |
+          ALB_URL=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --query "Stacks[0].Outputs[?OutputKey=='ALBURL'].OutputValue" \
+            --output text)
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **App URL**: ${ALB_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "- **API**: ${ALB_URL}/api/v1" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health**: ${ALB_URL}/health" >> $GITHUB_STEP_SUMMARY

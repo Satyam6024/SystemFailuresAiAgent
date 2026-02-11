@@ -1,0 +1,108 @@
+services:
+  # ── 1. PostgreSQL Database ─────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sfa
+      POSTGRES_USER: sfa
+      POSTGRES_PASSWORD: sfa_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sfa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sfa-net
+
+  # ── 2. FastAPI Backend ─────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      SFA_DATABASE_URL: postgresql+asyncpg://sfa:sfa_secret@postgres:5432/sfa
+      SFA_GROQ_API_KEY: ${SFA_GROQ_API_KEY}
+      SFA_GROQ_MODEL: ${SFA_GROQ_MODEL:-llama-3.3-70b-versatile}
+      SFA_GITHUB_TOKEN: ${SFA_GITHUB_TOKEN:-}
+      SFA_GITHUB_ROLLBACK_REPO: ${SFA_GITHUB_ROLLBACK_REPO:-}
+      SFA_CONFIDENCE_THRESHOLD_FOR_ACTION: ${SFA_CONFIDENCE_THRESHOLD_FOR_ACTION:-0.7}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sfa-net
+
+  # ── 3. Streamlit Frontend ──────────────────────────────────────
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui.Dockerfile
+    environment:
+      SFA_API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    networks:
+      - sfa-net
+
+  # ── 4. Prometheus (Metrics Collection) ─────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    networks:
+      - sfa-net
+
+  # ── 5. Grafana (Metrics Visualization) ─────────────────────────
+  grafana:
+    image: grafana/grafana:11.5.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - sfa-net
+
+  # ── 6. pgAdmin (Database Management) ───────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 5050
+    ports:
+      - "5050:5050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sfa-net
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:
+
+networks:
+  sfa-net:
+    driver: bridge
